@@ -46,9 +46,13 @@ public class BankController {
     }
 
     @PostMapping("/createAcc")
-    public Bank createAcc(@RequestBody Bank bank) {
-
-        return bankService.createAcc(bank);
+    public ResponseEntity<Bank> createAcc(@RequestBody Bank bank) {
+        try {
+            Bank createdAccount = bankService.createAcc(bank);
+            return ResponseEntity.ok(createdAccount);  // Return the created account
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(null);  // Return 400 BadRequest if validation fails
+        }
     }
 
     @PostMapping("/deposit")
@@ -175,7 +179,6 @@ public class BankController {
         }
     }
 
-    // Create a Time Deposit
     @PostMapping("/time-deposit/create")
     public ResponseEntity<TimeDeposit> createTimeDeposit(@RequestBody TimeDepositRequest request) {
         try {
@@ -191,6 +194,7 @@ public class BankController {
             return ResponseEntity.badRequest().body(null);
         }
     }
+
 
     // Get Time Deposit by CIF (using POST with request body)
     @PostMapping("/time-deposit")
@@ -263,6 +267,23 @@ public class BankController {
         }
 
         return ResponseEntity.ok(timeDeposits); // Return the list of time deposits
+    }
+
+    @GetMapping("/deposito/{cif}/interest")
+    public ResponseEntity<Double> calculateInterest(@PathVariable Long cif) {
+        Optional<Bank> bankOptional = bankService.getAccByCIF(cif);
+
+        if (bankOptional.isPresent()) {
+            Bank bank = bankOptional.get();
+            if (bank.getProduct().getType().equals("deposit")) {
+                Double interest = bankService.calculateInterest(bank);
+                return ResponseEntity.ok(interest);  // Return the interest amount
+            } else {
+                return ResponseEntity.badRequest().body(0.0);  // Return 0 if not a 'deposit' product
+            }
+        } else {
+            return ResponseEntity.notFound().build();  // Account not found
+        }
     }
 
 //    @GetMapping("/export/csv")

@@ -1,9 +1,6 @@
 package com.sam.minibank.service;
 
-import com.sam.minibank.model.Bank;
-import com.sam.minibank.model.BankTransfers;
-import com.sam.minibank.model.TimeDeposit;
-import com.sam.minibank.model.TransactionHistory;
+import com.sam.minibank.model.*;
 import com.sam.minibank.repository.*;
 import com.opencsv.CSVWriter;
 import com.sam.minibank.repository.*;
@@ -16,6 +13,8 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.logging.Logger;
@@ -27,6 +26,7 @@ public class BankService {
     private final TransactionHistoryRepository transactionHistoryRepository;
     private final BankTransfersRepository bankTransfersRepository;
     private final TimeDepositRepository timeDepositRepository;
+    private final ProductRepository productRepository;
 
     @Autowired
     private LedgerRepository ledgerRepository;  // Repository for ledger (cifTo checking)
@@ -37,11 +37,12 @@ public class BankService {
     public BankService(BankRepository bankRepository
                      , BankTransfersRepository bankTransfersRepository
                      , TransactionHistoryRepository transactionHistoryRepository
-                     , TimeDepositRepository timeDepositRepository) {
+                     , TimeDepositRepository timeDepositRepository, ProductRepository productRepository) {
         this.bankRepository = bankRepository;
         this.bankTransfersRepository = bankTransfersRepository;
         this.transactionHistoryRepository = transactionHistoryRepository;
         this.timeDepositRepository = timeDepositRepository;
+        this.productRepository = productRepository;
     }
 
     public List<Bank> getAllAccount() {
@@ -53,6 +54,39 @@ public class BankService {
     }
 
     public Bank createAcc(Bank bank) {
+        // Convert the provided year (from the bank object) into a Date containing only the year
+        Date year = bank.getYear();  // Get the year value (assuming it's an int)
+
+        if (year != null) {
+            // Create a Calendar instance and set the year to the provided value
+            Calendar calendar = Calendar.getInstance();
+            calendar.setTime(year);  // Set the date to the first day of the given year
+            int yearDate = calendar.get(Calendar.YEAR); // Get the Date object containing only the year
+
+            // Now create a new Date object with only the year
+            calendar.set(yearDate, Calendar.JANUARY, 1);  // Set to January 1st of the extracted year
+            Date newYearDate = calendar.getTime();  // Create a new Date with the extracted year
+
+            bank.setYear(newYearDate);  // Set the extracted year back to the bank object
+        } else {
+            // If yearDate is null, you can set a default year (e.g., 2024)
+            Calendar calendar = Calendar.getInstance();
+            calendar.set(2024, Calendar.JANUARY, 1);  // Default to January 1st, 2024
+            Date defaultYearDate = calendar.getTime();
+            bank.setYear(defaultYearDate);  // Set the default year to the bank object
+        }
+        // Validate the product type (Deposito or Saving)
+        Product product = productRepository.findByName(bank.getProduct().getProductName()).stream().findFirst().orElseThrow(() ->
+                new RuntimeException("Product not found: " + bank.getProduct().getProductName()));
+
+        // Validate if an account with the same NIK and account type already exists
+        List<Bank> existingAccounts = bankRepository.findByNikAndType(bank.getNik(), bank.getType());
+
+        if (!existingAccounts.isEmpty()) {
+            // If there are accounts with the same NIK and type, throw an exception or return an error
+            throw new RuntimeException("An account with the same NIK and account type already exists.");
+        }
+
         return bankRepository.save(bank);
     }
 
@@ -64,6 +98,7 @@ public class BankService {
             throw new RuntimeException("Account not found with CIF: " + cif);
         }
     }
+
 
     // Deposit money into an account
     public Bank deposit(Long cif, Long amount) {
@@ -189,6 +224,18 @@ public class BankService {
     // Method to retrieve Time Deposits by CIF
     public List<TimeDeposit> getTimeDepositsByCIF(Long cif) {
         return timeDepositRepository.findByCif(cif); // Query TimeDeposit by CIF
+    }
+
+    // Calculate interest for a 'Deposito' product
+    public Double calculateInterest(Bank bank) {
+        if (bank.getProduct().getType().equals("deposit")) {
+            double principalAmount = bank.getAmount();
+            double annualInterestRate = bank.getProduct().getInterestRate();
+            double interest = principalAmount * (annualInterestRate / 12);  // Monthly interest
+
+            return interest;
+        }
+        return 0.0;  // If it's not a 'deposit', return 0 interest.
     }
 
     public byte[] exportBooksToCSV() throws IOException {

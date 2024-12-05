@@ -25,14 +25,15 @@ public class TimeDepositService {
     }
 
     public TimeDeposit createTimeDeposit(Long cif, Long amount, Double interestRate, LocalDate depositStartDate, LocalDate depositEndDate) {
-        // First, check if the bank account exists for the given CIF
         Bank account = bankRepository.findByCif(cif);
         if (account == null) {
             throw new RuntimeException("Account with CIF " + cif + " does not exist.");
         }
 
-        // Create a new TimeDeposit and save it
         TimeDeposit timeDeposit = new TimeDeposit(cif, amount, interestRate, depositStartDate, depositEndDate);
+        Long maturityAmount = timeDeposit.calculateMaturityAmount();
+        timeDeposit.setMaturityAmount(maturityAmount);
+
         return timeDepositRepository.save(timeDeposit);
     }
 
